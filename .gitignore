@@ -1,1 +1,29 @@
 *Zone.Identifier
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Compiled files
+*.o
+*.out
+*.exe
+*.so
+*.a
+*.dylib
+a.out
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+build/
+
+# macOS
+.DS_Store
+
+# Testing
+*.tmp
+*.bak

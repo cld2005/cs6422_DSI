@@ -92,12 +92,49 @@ class FlatFile {
         std::map<int, std::unique_ptr<Post>> posts;
         std::map<int, std::unique_ptr<Engagement>> engagements;
 
-    public:
-        FlatFile(std::string users_csv_path, std::string posts_csv_path, std::string engagements_csv_path){
-            UNUSED(users_csv_path);
-            UNUSED(posts_csv_path);
-            UNUSED(engagements_csv_path);
+        std::string users_path;
+        std::string posts_path;
+        std::string engagements_path;
+
+        std::mutex users_mutex;
+        std::mutex posts_mutex;
+        std::mutex engagements_mutex;
+
+    static std::string trim(const std::string& str) {
+        size_t start = str.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) return "";
+        size_t end = str.find_last_not_of(" \t\r\n");
+        return str.substr(start, end - start + 1);
+    }
+
+    static std::vector<std::string> parseCSVLine(const std::string& line) {
+        std::vector<std::string> result;
+        std::stringstream ss(line);
+        std::string cell;
+        while (std::getline(ss, cell, ',')) {
+            result.push_back(trim(cell));
         }
+        return result;
+    }
+
+    bool strict_stoi(const std::string& str, int& result) {
+        if (str.empty()) return false;
+
+        const char* start = str.data();
+        const char* end = str.data() + str.size();
+
+        auto [ptr, ec] = std::from_chars(start, end, result);
+
+        // Success only if: no error AND entire string was consumed
+        return (ec == std::errc{}) && (ptr == end);
+    }
+
+    public:
+        FlatFile(std::string users_csv_path, std::string posts_csv_path, std::string engagements_csv_path)
+            :users_path(std::move(users_csv_path)),
+            posts_path (std::move(posts_csv_path)),
+            engagements_path (std::move(engagements_csv_path))
+            {}
 
         ~FlatFile() = default;
 
@@ -115,7 +152,118 @@ class FlatFile {
          * @complexity  O(U + P + E) over rows read, plus I/O.
          */
         void loadFlatFile() {
-            // TODO: add your implementation here
+            std::map<int, std::unique_ptr<User>> temp_users;
+            std::map<int, std::unique_ptr<Post>> temp_posts;
+            std::map<int, std::unique_ptr<Engagement>> temp_engagements;
+            {
+                // Load Users
+                std::ifstream users_file(users_path);
+                ASSERT_WITH_MESSAGE(users_file.is_open(), "Cannot open users file: " + users_path);
+                std::string line;
+                std::getline(users_file, line);
+                int count =0;
+                while (std::getline(users_file,line)) {
+                    if (trim(line).empty()) {
+                        continue;
+                    }
+                    auto fields = parseCSVLine(line);
+                    if (fields.size() != 3 || fields[0].empty() || fields[1].empty()) {
+                        //std::cout << "line rejected field size "<<fields.size() << " field 0 " <<fields[0] << std::endl;
+                        continue;
+                    }
+
+                    try {
+                        int id;
+                        if (!strict_stoi(fields[0], id)) {
+                            continue; // Skip malformed row
+                        }
+                        temp_users[id] = std::make_unique<User>(id, fields[1], fields[2]);
+                        count++;
+                    } catch (...) {
+                        std::cout << "failed to creat user "<< fields[0] << std::endl;
+                    }
+
+
+                }
+
+            }
+
+            {
+                // load posts
+                std::ifstream file(posts_path);
+                ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open posts file: " + posts_path);
+
+                std::string line;
+                std::getline(file, line); // Skip header
+
+                while (std::getline(file, line)) {
+                    if (trim(line).empty()) {
+                        continue;
+                    }
+
+                    auto fields = parseCSVLine(line);
+                    if (fields.size() < 4 || fields[0].empty()) {
+                        continue;
+                    }
+
+                    try {
+                        int id = std::stoi(fields[0]);
+                        int views = fields[3].empty() ? 0 : std::stoi(fields[3]);
+                        temp_posts[id] = std::make_unique<Post>(id, fields[1], fields[2], views);
+
+                    } catch (...) {
+                        continue;
+                    }
+                }
+            }
+
+            {
+                // load engagements
+                std::ifstream file(engagements_path);
+                ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open engagements file: " + engagements_path);
+
+                std::string line;
+                std::getline(file, line); // Skip header
+
+                while (std::getline(file, line)) {
+                    if (trim(line).empty()) {continue;}
+
+                    auto fields = parseCSVLine(line);
+                    if (fields.size() < 6 || fields[0].empty() || fields[1].empty()) {continue;}
+
+                    try {
+                        int id = std::stoi(fields[0]);
+                        int postId = std::stoi(fields[1]);
+                        int timestamp = fields[5].empty() ? 0 : std::stoi(fields[5]);
+
+                        // Check referential integrity: postId must exist
+                        if (temp_posts.find(postId) != temp_posts.end()) {
+                            temp_engagements[id] = std::make_unique<Engagement>(
+                                id, postId, fields[2], fields[3], fields[4], timestamp);
+                        }
+                    } catch (...) {
+                        continue;
+                    }
+                }
+            }
+
+
+            {
+                std::lock_guard<std::mutex> lock(users_mutex);
+                users = std::move(temp_users);
+            }
+            {
+                std::lock_guard<std::mutex> lock(posts_mutex);
+                posts = std::move(temp_posts);
+            }
+            {
+                std::lock_guard<std::mutex> lock(engagements_mutex);
+                engagements = std::move(temp_engagements);
+            }
+
+
+
+
         }
 
         /**
