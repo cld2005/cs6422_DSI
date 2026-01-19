@@ -117,7 +117,7 @@ class FlatFile {
         return result;
     }
 
-    bool strict_stoi(const std::string& str, int& result) {
+    static bool strict_stoi(const std::string& str, int& result) {
         if (str.empty()) return false;
 
         const char* start = str.data();
@@ -236,11 +236,15 @@ class FlatFile {
                         int postId = std::stoi(fields[1]);
                         int timestamp = fields[5].empty() ? 0 : std::stoi(fields[5]);
 
-                        // Check referential integrity: postId must exist
-                        if (temp_posts.find(postId) != temp_posts.end()) {
-                            temp_engagements[id] = std::make_unique<Engagement>(
-                                id, postId, fields[2], fields[3], fields[4], timestamp);
-                        }
+
+                        temp_engagements[id] = std::make_unique<Engagement>(
+                            id, postId,
+                            fields[2],
+                            fields[3],
+                            fields[4],
+                            timestamp
+                            );
+
                     } catch (...) {
                         continue;
                     }
