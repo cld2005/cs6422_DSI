@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+  dsi:
+    image: kimnguyennyc/gt-cs6422:latest
+    platform: linux/amd64
+    container_name: dsi_container
+    cap_add:
+      - SYS_PTRACE
+    security_opt: # options needed for gdb debugging
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ports:
+      - "7776:22"
+      - "7777:7777"
+    tty: true
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
+    volumes:
+      - .:/labs:rw
+volumes:
+  dsi_projects:
+    external: false
+networks:
+  default:
+    driver: bridge
