@@ -373,7 +373,7 @@ class FlatFile {
             out.close();
 
             // Atomic swap: remove old file and rename temp to actual
-            std::remove(posts_path.c_str());
+
             if (std::rename(temp_file.c_str(), posts_path.c_str()) != 0) {
                 return false;
             }
@@ -533,7 +533,6 @@ class FlatFile {
                 }
                 out.close();
 
-                std::remove(users_path.c_str());
                 if (std::rename(temp_file.c_str(), users_path.c_str()) != 0) {
                     return false;
                 }
@@ -553,7 +552,6 @@ class FlatFile {
                 }
                 out.close();
 
-                std::remove(posts_path.c_str());
                 if (std::rename(temp_file.c_str(), posts_path.c_str()) != 0) {
                     return false;
                 }
@@ -573,7 +571,6 @@ class FlatFile {
                 }
                 out.close();
 
-                std::remove(engagements_path.c_str());
                 if (std::rename(temp_file.c_str(), engagements_path.c_str()) != 0) {
                     return false;
                 }
