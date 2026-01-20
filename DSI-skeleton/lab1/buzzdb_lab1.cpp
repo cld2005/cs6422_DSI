@@ -129,6 +129,112 @@ class FlatFile {
         return (ec == std::errc{}) && (ptr == end);
     }
 
+    static void loadUsersFromCSV(const std::string& file_path,
+                          std::map<int, std::unique_ptr<User>>& users_map) {
+        std::ifstream file(file_path);
+        ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open users file: " + file_path);
+
+        std::string line;
+        std::getline(file, line); // Skip header
+
+        while (std::getline(file, line)) {
+            if (trim(line).empty()) {
+                continue;
+            }
+
+            auto fields = parseCSVLine(line);
+            if (fields.size() != 3 || fields[0].empty() || fields[1].empty()) {
+                continue;
+            }
+
+            try {
+                int id;
+                if (!strict_stoi(fields[0], id)) {
+                    continue; // Skip malformed row
+                }
+                users_map[id] = std::make_unique<User>(id, fields[1], fields[2]);
+            } catch (...) {
+                // Silently skip malformed rows
+            }
+        }
+    }
+    static void loadPostsFromCSV(const std::string& file_path,
+                      std::map<int, std::unique_ptr<Post>>& posts_map) {
+        std::ifstream file(file_path);
+        ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open posts file: " + file_path);
+
+        std::string line;
+        std::getline(file, line); // Skip header
+
+        while (std::getline(file, line)) {
+            if (trim(line).empty()) {
+                continue;
+            }
+
+            auto fields = parseCSVLine(line);
+            if (fields.size() < 4 || fields[0].empty()) {
+                continue;
+            }
+
+            try {
+                int id, views;
+                if (!strict_stoi(fields[0], id)) {
+                    continue; // Skip malformed id
+                }
+
+                // Allow missing/malformed views, default to 0
+                if (!strict_stoi(fields[3], views)) {
+                    views = 0;
+                }
+
+                posts_map[id] = std::make_unique<Post>(id, fields[1], fields[2], views);
+            } catch (...) {
+                continue;
+            }
+        }
+    }
+
+    static void loadEngagementsFromCSV(const std::string& file_path,
+                                std::map<int, std::unique_ptr<Engagement>>& engagements_map) {
+        std::ifstream file(file_path);
+        ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open engagements file: " + file_path);
+
+        std::string line;
+        std::getline(file, line); // Skip header
+
+        while (std::getline(file, line)) {
+            if (trim(line).empty()) {
+                continue;
+            }
+
+            auto fields = parseCSVLine(line);
+            if (fields.size() < 6 || fields[0].empty() || fields[1].empty()) {
+                continue;
+            }
+
+            try {
+                int id, postId, timestamp;
+                if (!strict_stoi(fields[0], id)) {
+                    continue; // Skip malformed id
+                }
+                if (!strict_stoi(fields[1], postId)) {
+                    continue; // Skip malformed postId
+                }
+
+                // Allow missing/malformed timestamp, default to 0
+                if (!strict_stoi(fields[5], timestamp)) {
+                    timestamp = 0;
+                }
+
+                engagements_map[id] = std::make_unique<Engagement>(
+                    id, postId, fields[2], fields[3], fields[4], timestamp
+                );
+            } catch (...) {
+                continue;
+            }
+        }
+    }
+
     public:
         FlatFile(std::string users_csv_path, std::string posts_csv_path, std::string engagements_csv_path)
             :users_path(std::move(users_csv_path)),
@@ -154,103 +260,12 @@ class FlatFile {
         void loadFlatFile() {
             std::map<int, std::unique_ptr<User>> temp_users;
             std::map<int, std::unique_ptr<Post>> temp_posts;
+
             std::map<int, std::unique_ptr<Engagement>> temp_engagements;
-            {
-                // Load Users
-                std::ifstream users_file(users_path);
-                ASSERT_WITH_MESSAGE(users_file.is_open(), "Cannot open users file: " + users_path);
-                std::string line;
-                std::getline(users_file, line);
-                int count =0;
-                while (std::getline(users_file,line)) {
-                    if (trim(line).empty()) {
-                        continue;
-                    }
-                    auto fields = parseCSVLine(line);
-                    if (fields.size() != 3 || fields[0].empty() || fields[1].empty()) {
-                        //std::cout << "line rejected field size "<<fields.size() << " field 0 " <<fields[0] << std::endl;
-                        continue;
-                    }
 
-                    try {
-                        int id;
-                        if (!strict_stoi(fields[0], id)) {
-                            continue; // Skip malformed row
-                        }
-                        temp_users[id] = std::make_unique<User>(id, fields[1], fields[2]);
-                        count++;
-                    } catch (...) {
-                        std::cout << "failed to creat user "<< fields[0] << std::endl;
-                    }
-
-
-                }
-
-            }
-
-            {
-                // load posts
-                std::ifstream file(posts_path);
-                ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open posts file: " + posts_path);
-
-                std::string line;
-                std::getline(file, line); // Skip header
-
-                while (std::getline(file, line)) {
-                    if (trim(line).empty()) {
-                        continue;
-                    }
-
-                    auto fields = parseCSVLine(line);
-                    if (fields.size() < 4 || fields[0].empty()) {
-                        continue;
-                    }
-
-                    try {
-                        int id = std::stoi(fields[0]);
-                        int views = fields[3].empty() ? 0 : std::stoi(fields[3]);
-                        temp_posts[id] = std::make_unique<Post>(id, fields[1], fields[2], views);
-
-                    } catch (...) {
-                        continue;
-                    }
-                }
-            }
-
-            {
-                // load engagements
-                std::ifstream file(engagements_path);
-                ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open engagements file: " + engagements_path);
-
-                std::string line;
-                std::getline(file, line); // Skip header
-
-                while (std::getline(file, line)) {
-                    if (trim(line).empty()) {continue;}
-
-                    auto fields = parseCSVLine(line);
-                    if (fields.size() < 6 || fields[0].empty() || fields[1].empty()) {continue;}
-
-                    try {
-                        int id = std::stoi(fields[0]);
-                        int postId = std::stoi(fields[1]);
-                        int timestamp = fields[5].empty() ? 0 : std::stoi(fields[5]);
-
-
-                        temp_engagements[id] = std::make_unique<Engagement>(
-                            id, postId,
-                            fields[2],
-                            fields[3],
-                            fields[4],
-                            timestamp
-                            );
-
-                    } catch (...) {
-                        continue;
-                    }
-                }
-            }
-
+            loadUsersFromCSV(users_path,temp_users);
+            loadPostsFromCSV(posts_path,temp_posts);
+            loadEngagementsFromCSV(engagements_path,temp_engagements);
 
             {
                 std::lock_guard<std::mutex> lock(users_mutex);
@@ -264,9 +279,6 @@ class FlatFile {
                 std::lock_guard<std::mutex> lock(engagements_mutex);
                 engagements = std::move(temp_engagements);
             }
-
-
-
 
         }
 
@@ -282,7 +294,38 @@ class FlatFile {
          * @complexity  O(U + P + E) total work; wall time reduced by parallel I/O/parse.
          */
         void loadMultipleFlatFilesInParallel() {            
-            // TODO: add your implementation here.
+            std::map<int, std::unique_ptr<User>> temp_users;
+            std::map<int, std::unique_ptr<Post>> temp_posts;
+            std::map<int, std::unique_ptr<Engagement>> temp_engagements;
+
+            std::thread user_thread([this, &temp_users]() {
+                loadUsersFromCSV(users_path, temp_users);
+            });
+
+            std::thread post_thread([this, &temp_posts]() {
+                loadPostsFromCSV(posts_path, temp_posts);
+            });
+
+            std::thread engagement_thread([this, &temp_engagements]() {
+                loadEngagementsFromCSV(engagements_path, temp_engagements);
+            });
+
+            user_thread.join();
+            post_thread.join();
+            engagement_thread.join();
+            {
+                std::lock_guard<std::mutex> lock(users_mutex);
+                users = std::move(temp_users);
+            }
+            {
+                std::lock_guard<std::mutex> lock(posts_mutex);
+                posts = std::move(temp_posts);
+            }
+            {
+                std::lock_guard<std::mutex> lock(engagements_mutex);
+                engagements = std::move(temp_engagements);
+            }
+
         }
 
         /** IMPORTANT HINTS ABOUT WRITES AND ATOMICITY:
@@ -295,7 +338,7 @@ class FlatFile {
         /**
          * @brief Atomically increment a post’s view count and persist to CSV.
          * @param post_id Target post id.
-         * @param views_count Amount to add (may be >1).
+         * @param views_count Amount to add (maybe >1).
          * @return true on success; false if post_id not found.
          * @thread_safety Writers are serialized via internal mutex.
          * @side_effects Rewrites posts CSV with the updated row.
@@ -314,8 +357,35 @@ class FlatFile {
          * @side_effects Appends to engagements CSV; ignores rows failing foreign-key checks, e.g. ensure every engagement.postId exists in posts.
          */
         void addEngagementRecord(Engagement& record) {
-            // TODO: add your implementation here.
-            UNUSED(record);
+            // Acquire locks to serialize writes and ensure consistency
+            std::lock_guard<std::mutex> users_lock(users_mutex);
+            std::lock_guard<std::mutex> posts_lock(posts_mutex);
+            std::lock_guard<std::mutex> eng_lock(engagements_mutex);
+
+            // Foreign key validation: postId must exist in posts
+            if (posts.find(record.postId) == posts.end()) {
+                return; // Silently ignore engagement with invalid postId
+            }
+
+            // Foreign key validation: username must exist in users
+            bool username_exists = false;
+            for (const auto& kv : users) {
+                if (kv.second->username == record.username) {
+                    username_exists = true;
+                    break;
+                }
+            }
+            if (!username_exists) {
+                return; // Silently ignore engagement with invalid username
+            }
+
+            // Add to in-memory map
+            engagements[record.id] = std::make_unique<Engagement>(record);
+
+            // Persist to CSV (append mode)
+            std::ofstream file(engagements_path, std::ios::app);
+            ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open engagements file for append");
+            file << record.toCSV();
         }
     
 
@@ -326,9 +396,25 @@ class FlatFile {
          * @thread_safety Reads are synchronized.
          */
         std::vector<std::pair<int,std::string> > getAllUserComments(int user_id) {
-            // TODO: add your implementation here.
-            UNUSED(user_id);
-            return {};
+            std::lock_guard<std::mutex> users_lock(users_mutex);
+            std::lock_guard<std::mutex> eng_lock(engagements_mutex);
+
+            auto user_it = users.find(user_id);
+            if (user_it == users.end()) {
+                return {};
+            }
+
+            auto username = user_it->second->username;
+
+            std::vector<std::pair<int,std::string> > comments;
+
+            for (const auto& kv : engagements) {
+                if (kv.second->username == username && kv.second->type == "comment") {
+                    comments.push_back({kv.second->postId,kv.second->comment});
+                }
+            }
+
+            std::sort(comments.begin(), comments.end());
         }
 
         /**
@@ -647,12 +733,13 @@ int main(int argc, char* argv[]) {
                 Engagement record1 = Engagement(100010, expected_comments[0].first + 1, flatFile.getUsers()[user_id]->username, "comment", "comment1", 100);
                 flatFile.addEngagementRecord(record1);
                 expected_comments.push_back({ record1.postId, record1.comment });
-
+                std::cout << "Test 3: added record 1" << std::endl;
                 Engagement record2 = Engagement(100011, expected_comments[0].first, flatFile.getUsers()[user_id]->username, "comment", "comment2", 101);
                 flatFile.addEngagementRecord(record2);
                 expected_comments.push_back({ record2.postId, record2.comment });
-
+                std::cout << "Test 3: added record 2" << std::endl;
                 std::sort(expected_comments.begin(), expected_comments.end());
+                std::cout << "Test 3: sorted comments" << std::endl;
             }
 
             {
