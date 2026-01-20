@@ -415,6 +415,8 @@ class FlatFile {
             }
 
             std::sort(comments.begin(), comments.end());
+
+            return comments;
         }
 
         /**
@@ -733,13 +735,13 @@ int main(int argc, char* argv[]) {
                 Engagement record1 = Engagement(100010, expected_comments[0].first + 1, flatFile.getUsers()[user_id]->username, "comment", "comment1", 100);
                 flatFile.addEngagementRecord(record1);
                 expected_comments.push_back({ record1.postId, record1.comment });
-                std::cout << "Test 3: added record 1" << std::endl;
+
                 Engagement record2 = Engagement(100011, expected_comments[0].first, flatFile.getUsers()[user_id]->username, "comment", "comment2", 101);
                 flatFile.addEngagementRecord(record2);
                 expected_comments.push_back({ record2.postId, record2.comment });
-                std::cout << "Test 3: added record 2" << std::endl;
+
                 std::sort(expected_comments.begin(), expected_comments.end());
-                std::cout << "Test 3: sorted comments" << std::endl;
+
             }
 
             {
