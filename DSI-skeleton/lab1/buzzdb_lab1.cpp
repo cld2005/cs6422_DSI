@@ -344,10 +344,41 @@ class FlatFile {
          * @side_effects Rewrites posts CSV with the updated row.
          */
         bool updatePostViews(int post_id, int views_count) {
-            // TODO: add your implementation here.     
-            UNUSED(post_id);
-            UNUSED(views_count);
-            return false;
+            std::lock_guard<std::mutex> lock(posts_mutex);
+
+            // Check if post exists
+            auto post_it = posts.find(post_id);
+            if (post_it == posts.end()) {
+                return false;
+            }
+
+            // Update in-memory view count
+            post_it->second->views += views_count;
+
+            // Atomically persist to CSV using temp file + rename pattern
+            std::string temp_file = posts_path + ".tmp";
+            std::ofstream out(temp_file);
+            if (!out.is_open()) {
+                return false;
+            }
+
+            // Write header
+            out << "id,content,username,views\n";
+
+            // Write all posts (including the updated one)
+            for (const auto& kv : posts) {
+                out << kv.second->toCSV();
+            }
+
+            out.close();
+
+            // Atomic swap: remove old file and rename temp to actual
+            std::remove(posts_path.c_str());
+            if (std::rename(temp_file.c_str(), posts_path.c_str()) != 0) {
+                return false;
+            }
+
+            return true;
         }
 
         /**
@@ -426,9 +457,31 @@ class FlatFile {
          * @thread_safety Reads are synchronized.
          */
         std::pair<int,int> getAllEngagementsByLocation(std::string location) {
-            // TODO: add your implementation here.
-            UNUSED(location);
-            return {};
+            std::lock_guard<std::mutex> users_lock(users_mutex);
+            std::lock_guard<std::mutex> eng_lock(engagements_mutex);
+
+            std::unordered_set<std::string> usernames_in_location;
+            for (const auto& kv : users) {
+                if (kv.second->location == location) {
+                    usernames_in_location.insert(kv.second->username);
+                }
+            }
+
+            // Count likes and comments for users in that location
+            int likes_count = 0;
+            int comments_count = 0;
+
+            for (const auto& kv : engagements) {
+                if (usernames_in_location.find(kv.second->username) != usernames_in_location.end()) {
+                    if (kv.second->type == "like") {
+                        likes_count++;
+                    } else if (kv.second->type == "comment") {
+                        comments_count++;
+                    }
+                }
+            }
+
+            return {likes_count, comments_count};
         }
 
         /**
@@ -440,10 +493,96 @@ class FlatFile {
          * @side_effects Rewrites users, posts, and engagements CSVs.
          */
         bool updateUserName(int user_id, std::string new_username){    
-            // TODO: add your implementation here.
-            UNUSED(user_id);
-            UNUSED(new_username);
-            return false;
+            std::lock_guard<std::mutex> users_lock(users_mutex);
+            std::lock_guard<std::mutex> posts_lock(posts_mutex);
+            std::lock_guard<std::mutex> eng_lock(engagements_mutex);
+
+            auto user_it = users.find(user_id);
+
+            if (user_it == users.end()) {
+                return false;
+            }
+
+            auto username = user_it->second->username;
+
+            user_it->second->username = new_username;
+
+            for ( auto& kv : posts) {
+                if (kv.second->username == username) {
+                    kv.second->username = new_username;
+                }
+            }
+
+            for ( auto& kv : engagements) {
+                if (kv.second->username == username) {
+                    kv.second->username = new_username;
+                }
+            }
+
+            // Atomically persist users CSV
+            {
+                std::string temp_file = users_path + ".tmp";
+                std::ofstream out(temp_file);
+                if (!out.is_open()) {
+                    return false;
+                }
+
+                out << "id,username,location\n"; // header
+                for (const auto& kv : users) {
+                    out << kv.second->toCSV();
+                }
+                out.close();
+
+                std::remove(users_path.c_str());
+                if (std::rename(temp_file.c_str(), users_path.c_str()) != 0) {
+                    return false;
+                }
+            }
+
+            // Atomically persist posts CSV
+            {
+                std::string temp_file = posts_path + ".tmp";
+                std::ofstream out(temp_file);
+                if (!out.is_open()) {
+                    return false;
+                }
+
+                out << "id,content,username,views\n"; // header
+                for (const auto& kv : posts) {
+                    out << kv.second->toCSV();
+                }
+                out.close();
+
+                std::remove(posts_path.c_str());
+                if (std::rename(temp_file.c_str(), posts_path.c_str()) != 0) {
+                    return false;
+                }
+            }
+
+            // Atomically persist engagements CSV
+            {
+                std::string temp_file = engagements_path + ".tmp";
+                std::ofstream out(temp_file);
+                if (!out.is_open()) {
+                    return false;
+                }
+
+                out << "id,postId,username,type,comment,timestamp\n"; // header
+                for (const auto& kv : engagements) {
+                    out << kv.second->toCSV();
+                }
+                out.close();
+
+                std::remove(engagements_path.c_str());
+                if (std::rename(temp_file.c_str(), engagements_path.c_str()) != 0) {
+                    return false;
+                }
+            }
+
+            return true;
+
+
+
         }
 
         // Accessors
