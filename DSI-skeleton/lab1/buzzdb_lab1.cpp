@@ -214,16 +214,20 @@ class FlatFile {
 
             try {
                 int id, postId, timestamp;
+
+                // Skip malformed id
                 if (!strict_stoi(fields[0], id)) {
-                    continue; // Skip malformed id
-                }
-                if (!strict_stoi(fields[1], postId)) {
-                    continue; // Skip malformed postId
+                    continue;
                 }
 
-                // Allow missing/malformed timestamp, default to 0
+                // Skip malformed postId
+                if (!strict_stoi(fields[1], postId)) {
+                    continue;
+                }
+
+                // Skip malformed timestamp
                 if (!strict_stoi(fields[5], timestamp)) {
-                    timestamp = 0;
+                    continue;
                 }
 
                 engagements_map[id] = std::make_unique<Engagement>(
@@ -365,14 +369,11 @@ class FlatFile {
             // Write header
             out << "id,content,username,views\n";
 
-            // Write all posts (including the updated one)
             for (const auto& kv : posts) {
                 out << kv.second->toCSV();
             }
 
             out.close();
-
-            // Atomic swap: remove old file and rename temp to actual
 
             if (std::rename(temp_file.c_str(), posts_path.c_str()) != 0) {
                 return false;
@@ -395,7 +396,7 @@ class FlatFile {
 
             // Foreign key validation: postId must exist in posts
             if (posts.find(record.postId) == posts.end()) {
-                return; // Silently ignore engagement with invalid postId
+                return;
             }
 
             // Foreign key validation: username must exist in users
@@ -410,10 +411,8 @@ class FlatFile {
                 return; // Silently ignore engagement with invalid username
             }
 
-            // Add to in-memory map
             engagements[record.id] = std::make_unique<Engagement>(record);
 
-            // Persist to CSV (append mode)
             std::ofstream file(engagements_path, std::ios::app);
             ASSERT_WITH_MESSAGE(file.is_open(), "Cannot open engagements file for append");
             file << record.toCSV();
@@ -467,7 +466,6 @@ class FlatFile {
                 }
             }
 
-            // Count likes and comments for users in that location
             int likes_count = 0;
             int comments_count = 0;
 
@@ -577,9 +575,7 @@ class FlatFile {
             }
 
             return true;
-
-
-
+            
         }
 
         // Accessors
